@@ -3,7 +3,6 @@ import pandas as pd
 from io import BytesIO
 from datetime import datetime, timedelta
 from openpyxl.styles import PatternFill, Font, Alignment
-from openpyxl.utils import get_column_letter
 
 st.set_page_config(page_title="Генератор отчетов Статусы", layout="centered")
 st.title("📊 Генератор отчета «Статусы»")
@@ -93,37 +92,41 @@ if uploaded_file is not None:
     ws = wb["Статусы"]
     
     # --- ШИРИНА КОЛОНОК ---
-    # Колонка A — 37
     ws.column_dimensions["A"].width = 37
-    # Остальные колонки (B, C, D, E, F) — 18
     for col in ["B", "C", "D", "E", "F"]:
         ws.column_dimensions[col].width = 18
     
     # --- ЦВЕТА ---
-    # Цвет шапки (светло-песочный)
     color_header = PatternFill(start_color="FDEBD0", end_color="FDEBD0", fill_type="solid")
-    # Цвет для строк: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
     color_highlight = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
-    # Цвет для строки Итого
     color_total = PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid")
     
-    # Жирный шрифт для шапки и строки Итого
     bold_font = Font(bold=True)
+    
+    # Выравнивания
     center_alignment = Alignment(horizontal="center", vertical="center")
+    left_alignment = Alignment(horizontal="left", vertical="center")
     
-    # --- 1. ЗАКРЕПЛЯЕМ ШАПКУ (первая строка) ---
-    ws.freeze_panes = "A2"  # Закрепляем первую строку
+    # --- 1. ЗАКРЕПЛЯЕМ ШАПКУ ---
+    ws.freeze_panes = "A2"
     
-    # --- 2. ФОРМАТИРУЕМ ШАПКУ (первая строка) ---
+    # --- 2. ФОРМАТИРУЕМ ШАПКУ ---
     for col in range(1, ws.max_column + 1):
         cell = ws.cell(row=1, column=col)
         cell.fill = color_header
         cell.font = bold_font
-        cell.alignment = center_alignment
+        cell.alignment = center_alignment  # Шапка — по центру
     
-    # --- 3. ФОРМАТИРУЕМ ОСТАЛЬНЫЕ СТРОКИ ---
+    # --- 3. ФОРМАТИРУЕМ ВСЕ СТРОКИ ДАННЫХ ---
     for row in range(2, ws.max_row + 1):
         cell_value = ws.cell(row=row, column=1).value
+        
+        # Колонка A (названия статусов) — ВСЕГДА по левому краю
+        ws.cell(row=row, column=1).alignment = left_alignment
+        
+        # Колонки B–F — по центру
+        for col in range(2, ws.max_column + 1):
+            ws.cell(row=row, column=col).alignment = center_alignment
         
         # Строка "Итого"
         if cell_value == "Итого":
@@ -131,19 +134,11 @@ if uploaded_file is not None:
                 cell = ws.cell(row=row, column=col)
                 cell.fill = color_total
                 cell.font = bold_font
-                cell.alignment = center_alignment
         
         # Строки: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
         elif cell_value in ["Менеджер назначен", "Пора звонить", "Пора звонить (холодняк)"]:
             for col in range(1, ws.max_column + 1):
-                cell = ws.cell(row=row, column=col)
-                cell.fill = color_highlight
-                cell.alignment = center_alignment
-        
-        # Остальные строки — выравниваем по центру только колонки B-F
-        else:
-            for col in range(2, ws.max_column + 1):
-                ws.cell(row=row, column=col).alignment = center_alignment
+                ws.cell(row=row, column=col).fill = color_highlight
     
     wb.save(output)
     output.seek(0)
