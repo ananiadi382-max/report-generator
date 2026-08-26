@@ -42,11 +42,19 @@ if uploaded_file is not None:
     
     df_clean.columns = ["Стадия", "Ответственный"] + (["Дата изменения"] if date_col is not None else [])
     
-    # Объединяем статусы
+    # --- 1. ОБЪЕДИНЯЕМ СТАТУСЫ ---
+    # Аккаунты_Менеджер назначен → Менеджер назначен
     df_clean["Стадия"] = df_clean["Стадия"].replace(
         {
             "Аккаунты_Менеджер назначен": "Менеджер назначен",
             "Аккаунты_Менеджер назначен ": "Менеджер назначен",
+        }
+    )
+    
+    # Пора звонить + Пора звонить (холодняк) → Пора звонить
+    df_clean["Стадия"] = df_clean["Стадия"].replace(
+        {
+            "Пора звонить (холодняк)": "Пора звонить",
         }
     )
     
@@ -73,6 +81,28 @@ if uploaded_file is not None:
     total_row = pivot.sum(axis=0)
     pivot.loc["Итого"] = total_row
     
+    # --- 2. НОВЫЙ ПОРЯДОК СТАТУСОВ ---
+    # Задаем желаемый порядок
+    status_order = [
+        "Менеджер назначен",
+        "Пора звонить",
+        "Недозвон",
+        "Успешный контакт",
+        "Квалификация пройдена и КП отправлено",
+        "Документы Получены",
+        "Лиды из ЛК",
+        "Новый лид",
+        "Новый лид (Холодняк)",
+        "Без изменений >10 дней",
+        "Итого"
+    ]
+    
+    # Фильтруем только те статусы, которые есть в таблице
+    existing_statuses = [s for s in status_order if s in pivot.index]
+    
+    # Переставляем строки в нужном порядке
+    pivot = pivot.loc[existing_statuses]
+    
     pivot.index.name = "Статус лида"
     
     st.subheader("📋 Сгенерированный отчет")
@@ -91,37 +121,35 @@ if uploaded_file is not None:
     wb = load_workbook(temp_output)
     ws = wb["Статусы"]
     
-    # --- ШИРИНА КОЛОНОК ---
+    # Ширина колонок
     ws.column_dimensions["A"].width = 37
     for col in ["B", "C", "D", "E", "F"]:
         ws.column_dimensions[col].width = 18
     
-    # --- ЦВЕТА ---
+    # Цвета
     color_header = PatternFill(start_color="FDEBD0", end_color="FDEBD0", fill_type="solid")
     color_highlight = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
     color_total = PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid")
     
     bold_font = Font(bold=True)
-    
-    # Выравнивания
     center_alignment = Alignment(horizontal="center", vertical="center")
     left_alignment = Alignment(horizontal="left", vertical="center")
     
-    # --- 1. ЗАКРЕПЛЯЕМ ШАПКУ ---
+    # Закрепляем шапку
     ws.freeze_panes = "A2"
     
-    # --- 2. ФОРМАТИРУЕМ ШАПКУ ---
+    # Форматируем шапку
     for col in range(1, ws.max_column + 1):
         cell = ws.cell(row=1, column=col)
         cell.fill = color_header
         cell.font = bold_font
-        cell.alignment = center_alignment  # Шапка — по центру
+        cell.alignment = center_alignment
     
-    # --- 3. ФОРМАТИРУЕМ ВСЕ СТРОКИ ДАННЫХ ---
+    # Форматируем строки данных
     for row in range(2, ws.max_row + 1):
         cell_value = ws.cell(row=row, column=1).value
         
-        # Колонка A (названия статусов) — ВСЕГДА по левому краю
+        # Колонка A — по левому краю
         ws.cell(row=row, column=1).alignment = left_alignment
         
         # Колонки B–F — по центру
@@ -135,8 +163,8 @@ if uploaded_file is not None:
                 cell.fill = color_total
                 cell.font = bold_font
         
-        # Строки: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
-        elif cell_value in ["Менеджер назначен", "Пора звонить", "Пора звонить (холодняк)"]:
+        # Строки с заливкой
+        elif cell_value in ["Менеджер назначен", "Пора звонить"]:
             for col in range(1, ws.max_column + 1):
                 ws.cell(row=row, column=col).fill = color_highlight
     
