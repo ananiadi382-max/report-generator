@@ -42,55 +42,34 @@ if uploaded_file is not None:
     
     df_clean.columns = ["Стадия", "Ответственный"] + (["Дата изменения"] if date_col is not None else [])
     
-    # --- ДИАГНОСТИКА: показываем уникальные статусы ---
-    with st.expander("🔍 Диагностика: уникальные статусы в выгрузке"):
-        st.write("Уникальные статусы:", df_clean["Стадия"].unique().tolist())
-    
-    # --- ОБЪЕДИНЯЕМ СТАТУСЫ (исправленная версия) ---
-    # Заменяем ВСЕ варианты статуса "Менеджер назначен"
+    # Объединяем статусы
     df_clean["Стадия"] = df_clean["Стадия"].replace(
         {
             "Аккаунты_Менеджер назначен": "Менеджер назначен",
-            "Аккаунты_Менеджер назначен ": "Менеджер назначен",  # с пробелом
+            "Аккаунты_Менеджер назначен ": "Менеджер назначен",
         }
     )
     
-    # --- ДИАГНОСТИКА: проверяем, что замена сработала ---
-    with st.expander("🔍 Диагностика: статусы после замены"):
-        st.write("Уникальные статусы после замены:", df_clean["Стадия"].unique().tolist())
-    
-    # --- 1. Строим сводную таблицу БЕЗ итогов ---
+    # Строим сводную таблицу
     pivot = pd.crosstab(df_clean["Стадия"], df_clean["Ответственный"])
     
-    # --- ДИАГНОСТИКА: проверяем даты ---
+    # Добавляем строку "Без изменений >10 дней"
     if date_col is not None:
         df_clean["Дата изменения"] = pd.to_datetime(df_clean["Дата изменения"], errors="coerce")
         today = datetime.now()
         
-        # Сколько всего лидов с датой
-        total_with_date = df_clean["Дата изменения"].notna().sum()
-        # Сколько лидов без даты
-        total_without_date = df_clean["Дата изменения"].isna().sum()
-        # Сколько старых лидов (>10 дней)
         old_leads = df_clean[
             (df_clean["Дата изменения"].notna()) & 
             ((today - df_clean["Дата изменения"]) > timedelta(days=10))
         ]
+        
         old_count = old_leads.groupby("Ответственный").size()
-        
-        with st.expander("🔍 Диагностика: даты"):
-            st.write(f"Всего лидов с датой: {total_with_date}")
-            st.write(f"Всего лидов без даты: {total_without_date}")
-            st.write(f"Лидов старше 10 дней: {len(old_leads)}")
-            st.write("Распределение по менеджерам:", old_count.to_dict())
-        
-        # Добавляем строку "Без изменений >10 дней"
         pivot.loc["Без изменений >10 дней"] = old_count.reindex(pivot.columns, fill_value=0)
     
-    # --- 2. Добавляем столбец "Итого" ---
+    # Добавляем столбец "Итого"
     pivot["Итого"] = pivot.sum(axis=1)
     
-    # --- 3. Добавляем строку "Итого" ---
+    # Добавляем строку "Итого"
     total_row = pivot.sum(axis=0)
     pivot.loc["Итого"] = total_row
     
@@ -123,6 +102,7 @@ if uploaded_file is not None:
     bold_font = Font(bold=True)
     center_alignment = Alignment(horizontal="center", vertical="center")
     
+    # Применяем форматирование
     for row in range(2, ws.max_row + 1):
         cell_value = ws.cell(row=row, column=1).value
         
@@ -136,6 +116,7 @@ if uploaded_file is not None:
             for col in range(1, ws.max_column + 1):
                 ws.cell(row=row, column=col).fill = color_highlight
     
+    # Выравнивание по центру
     for row in range(1, ws.max_row + 1):
         for col in range(2, ws.max_column + 1):
             ws.cell(row=row, column=col).alignment = center_alignment
