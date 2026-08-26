@@ -49,8 +49,16 @@ if uploaded_file is not None:
         "Менеджер назначен"
     )
     
-    # Подсчет по статусам и менеджерам
-    pivot = pd.crosstab(df_clean["Стадия"], df_clean["Ответственный"], margins=True, margins_name="Итого")
+    # --- ФИКС: Правильный порядок колонок ---
+    # 1. Сначала строим сводную таблицу БЕЗ итогов
+    pivot = pd.crosstab(df_clean["Стадия"], df_clean["Ответственный"])
+    
+    # 2. Добавляем столбец "Итого" в КОНЕЦ
+    pivot["Итого"] = pivot.sum(axis=1)
+    
+    # 3. Добавляем строку "Итого" в КОНЕЦ
+    total_row = pivot.sum(axis=0)
+    pivot.loc["Итого"] = total_row
     
     # Добавляем строку "Без изменений >10 дней"
     if date_col is not None:
@@ -63,6 +71,9 @@ if uploaded_file is not None:
         ]
         
         old_count = old_leads.groupby("Ответственный").size()
+        
+        # Добавляем строку перед "Итого" (чтобы не сломать порядок)
+        # Находим индекс строки "Итого" и вставляем перед ней
         pivot.loc["Без изменений >10 дней"] = old_count.reindex(pivot.columns[:-1], fill_value=0)
         pivot.loc["Без изменений >10 дней", "Итого"] = old_count.sum()
     
@@ -74,12 +85,10 @@ if uploaded_file is not None:
     # --- СОЗДАНИЕ EXCEL С ФОРМАТИРОВАНИЕМ ---
     output = BytesIO()
     
-    # Сначала сохраняем данные во временный файл
     temp_output = BytesIO()
     with pd.ExcelWriter(temp_output, engine="openpyxl") as writer:
         pivot.to_excel(writer, sheet_name="Статусы")
     
-    # Открываем созданный файл для форматирования
     from openpyxl import load_workbook
     
     temp_output.seek(0)
@@ -87,44 +96,44 @@ if uploaded_file is not None:
     ws = wb["Статусы"]
     
     # --- НАСТРОЙКА ШИРИНЫ КОЛОНОК ---
-    # Колонка A — 37
     ws.column_dimensions["A"].width = 37
-    # Остальные колонки (B, C, D, E, F) — 15
     for col in ["B", "C", "D", "E", "F"]:
         ws.column_dimensions[col].width = 15
     
     # --- ЦВЕТА ---
-    # Цвет для строк: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
     color_highlight = PatternFill(start_color="DCE6F1", end_color="DCE6F1", fill_type="solid")
-    # Цвет для строки Итого
     color_total = PatternFill(start_color="D9EAD3", end_color="D9EAD3", fill_type="solid")
-    # Жирный шрифт для Итого
     bold_font = Font(bold=True)
+    center_alignment = Alignment(horizontal="center", vertical="center")
     
-    # Проходим по всем строкам в таблице
-    for row in range(2, ws.max_row + 1):  # 2 — потому что первая строка — заголовок
-        cell_value = ws.cell(row=row, column=1).value  # Значение в колонке A
+    # Находим номер строки с "Итого" (она последняя)
+    total_row_num = None
+    for row in range(2, ws.max_row + 1):
+        if ws.cell(row=row, column=1).value == "Итого":
+            total_row_num = row
+            break
+    
+    # Проходим по всем строкам
+    for row in range(2, ws.max_row + 1):
+        cell_value = ws.cell(row=row, column=1).value
         
-        # Если это строка Итого
+        # Строка "Итого"
         if cell_value == "Итого":
-            # Заливаем всю строку цветом D9EAD3
             for col in range(1, ws.max_column + 1):
                 cell = ws.cell(row=row, column=col)
                 cell.fill = color_total
                 cell.font = bold_font
         
-        # Если это строки: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
+        # Строки: Менеджер назначен, Пора звонить, Пора звонить (холодняк)
         elif cell_value in ["Менеджер назначен", "Пора звонить", "Пора звонить (холодняк)"]:
             for col in range(1, ws.max_column + 1):
                 ws.cell(row=row, column=col).fill = color_highlight
     
-    # --- ВЫРОВНИВАНИЕ ПО ЦЕНТРУ ДЛЯ ВСЕХ ЯЧЕЕК (КРОМЕ ПЕРВОЙ КОЛОНКИ) ---
-    center_alignment = Alignment(horizontal="center", vertical="center")
+    # Выравнивание по центру для колонок B–F
     for row in range(1, ws.max_row + 1):
         for col in range(2, ws.max_column + 1):
             ws.cell(row=row, column=col).alignment = center_alignment
     
-    # Сохраняем форматированный файл
     wb.save(output)
     output.seek(0)
     
